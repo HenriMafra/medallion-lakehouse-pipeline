@@ -1,0 +1,26 @@
+============================================================================
+ AJUSTE DE MEMORIA (.wslconfig) - so se sua maquina tiver POUCA RAM (~8 GB)
+============================================================================
+
+ POR QUE: este projeto sobe HDFS + MySQL + Spark ao mesmo tempo. Em maquinas
+ com pouca RAM, o WSL2 (a VM do Docker no Windows) pega RAM demais e os
+ containers podem morrer (o Spark "morre" no meio do job). Limitar a VM e
+ adicionar swap resolve.
+
+ COMO USAR:
+   1) Copie o conteudo abaixo (a partir de [wsl2]) para um arquivo chamado
+      .wslconfig na pasta do SEU usuario:
+          C:\Users\SEU-USUARIO\.wslconfig
+   2) Ajuste 'memory' para no maximo ~70% da RAM total da sua maquina:
+          8 GB  de RAM  ->  memory=5GB
+          16 GB de RAM  ->  memory=10GB   (ou nem precisa deste ajuste)
+   3) Abra o PowerShell e rode:   wsl --shutdown
+   4) Reabra o Docker Desktop.
+
+ Em maquinas com 16 GB ou mais, normalmente voce NAO precisa disto.
+
+----------------------------- copie a partir daqui -------------------------
+[wsl2]
+memory=5GB
+swap=8GB
+processors=4

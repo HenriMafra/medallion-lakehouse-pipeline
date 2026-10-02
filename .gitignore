@@ -1,0 +1,12 @@
+# Dados baixados/gerados (grandes e reproduziveis pelo preparar_dados.py)
+dados/brutos/*.csv
+dados/brutos/*.parquet
+dados/brutos/*.sql
+!dados/brutos/.gitkeep
+
+# Cache do Python
+__pycache__/
+*.pyc
+
+# Logs locais de teste
+*.log

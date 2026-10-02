@@ -1,0 +1,108 @@
+# ============================================================================
+#  AMBIENTE INTEGRADO - Arquitetura Medalhao (Medallion) sobre Delta Lake
+#  (este arquivo fica em ambiente/ ; os caminhos relativos partem daqui)
+# ============================================================================
+#  4 servicos numa rede Docker privada:
+#    namenode  -> "cerebro" do HDFS (sabe ONDE cada bloco esta)
+#    datanode  -> "disco" do HDFS (guarda os blocos)
+#    mysql     -> banco relacional: uma das FONTES de dados crus
+#    spark     -> motor que le, transforma e grava as 3 camadas (Bronze/Prata/Ouro)
+#
+#  Pastas do projeto usadas aqui:
+#    ./spark        -> imagem do Spark (Dockerfile)
+#    ./mysql        -> schema inicial do banco
+#    ./hadoop.env   -> configuracao do HDFS
+#    ../codigo      -> jobs PySpark (montados em /app/jobs)
+#    ../dados       -> dados crus (montados em /data)
+# ============================================================================
+
+name: medallion-nyc
+
+services:
+
+  namenode:
+    image: bde2020/hadoop-namenode:2.0.0-hadoop3.2.1-java8
+    container_name: namenode
+    hostname: namenode
+    env_file: ./hadoop.env
+    environment:
+      - CLUSTER_NAME=medallion
+    ports:
+      - "9870:9870"          # Interface WEB do HDFS -> http://localhost:9870
+    volumes:
+      - hdfs_namenode:/hadoop/dfs/name
+      - ../dados:/data:ro    # p/ usarmos 'hdfs dfs -put' do CSV local p/ o HDFS
+    mem_limit: 900m
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:9870/ || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  datanode:
+    image: bde2020/hadoop-datanode:2.0.0-hadoop3.2.1-java8
+    container_name: datanode
+    hostname: datanode
+    env_file: ./hadoop.env
+    environment:
+      - SERVICE_PRECONDITION=namenode:9870
+    ports:
+      - "9864:9864"
+    volumes:
+      - hdfs_datanode:/hadoop/dfs/data
+    mem_limit: 900m
+    depends_on:
+      - namenode
+
+  mysql:
+    image: mysql:8.0
+    container_name: mysql
+    hostname: mysql
+    command:
+      - --innodb-buffer-pool-size=128M
+      - --innodb-log-buffer-size=16M
+      - --performance-schema=OFF
+      - --max-connections=25
+      - --local-infile=1
+    environment:
+      - MYSQL_ROOT_PASSWORD=rootpw
+      - MYSQL_DATABASE=nyc
+      - MYSQL_USER=spark
+      - MYSQL_PASSWORD=spark
+    ports:
+      - "3307:3306"          # acesse em localhost:3307 (usuario root / senha rootpw)
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./mysql:/docker-entrypoint-initdb.d:ro   # cria o schema no 1o boot
+      - ../dados:/data:ro                        # p/ carregar zones_insert.sql
+    mem_limit: 600m
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -prootpw || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  spark:
+    build: ./spark
+    image: medallion-spark:latest
+    container_name: spark
+    hostname: spark
+    depends_on:
+      - namenode
+      - datanode
+      - mysql
+    environment:
+      - HADOOP_USER_NAME=root
+      - PYTHONUNBUFFERED=1
+    ports:
+      - "4040:4040"          # Interface WEB do Spark (durante os jobs)
+    volumes:
+      - ../codigo:/app/jobs  # jobs PySpark -> /app/jobs no container
+      - ../dados:/data       # dados crus -> /data no container
+    command: ["tail", "-f", "/dev/null"]
+    mem_limit: 2400m
+
+volumes:
+  hdfs_namenode:
+  hdfs_datanode:
+  mysql_data:
